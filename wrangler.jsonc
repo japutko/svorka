@@ -17,6 +17,10 @@
       "database_id": "e7b0a548-5bb3-4e0c-b16c-5502b56c71ca",
       "migrations_dir": "migrations"
     }
-  ]
-  // Later: "triggers": { "crons": ["0 6 * * *"] } for daily notification checks
+  ],
+  // Documents (receipts, quotes, invoices, inspection files). Create once: npx wrangler r2 bucket create svorka-files
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "svorka-files" }],
+  // Daily notification rules -> todos (05:00 UTC)
+  "triggers": { "crons": ["0 5 * * *"] }
+  // Secrets (npx wrangler secret put …): MAPY_API_KEY; optional ACCESS_TEAM_DOMAIN + ACCESS_AUD
 }

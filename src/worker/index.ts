@@ -1,8 +1,17 @@
 import { Hono } from "hono";
+import type { AppEnv, Env } from "./types";
+import { requireAccess } from "./auth";
+import { entityRoutes } from "./entities";
+import { searchRoutes } from "./search";
+import { fileRoutes } from "./files";
+import { adminRoutes } from "./admin";
+import { notificationRoutes, runRules } from "./notifications";
+import { dashboardRoutes } from "./dashboard";
+import { geoRoutes } from "./geo";
 
-type Env = { DB: D1Database };
+const app = new Hono<AppEnv>().basePath("/api");
 
-const app = new Hono<{ Bindings: Env }>().basePath("/api");
+app.use("*", requireAccess);
 
 // Health check: confirms the Worker runs and the D1 database is reachable and migrated.
 app.get("/health", async (c) => {
@@ -22,6 +31,25 @@ app.get("/codelists/:type", async (c) => {
   return c.json(rows.results);
 });
 
+app.route("/e", entityRoutes);
+app.route("/search", searchRoutes);
+app.route("/files", fileRoutes);
+app.route("/admin", adminRoutes);
+app.route("/notifications", notificationRoutes);
+app.route("/dashboard", dashboardRoutes);
+app.route("/geo", geoRoutes);
+
+app.onError((err, c) => {
+  console.error(err);
+  return c.json({ error: err.message }, 500);
+});
+
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Daily: turn notification rules into todos
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runRules(env.DB).then((r) => console.log("notification rules", JSON.stringify(r))));
+  },
+} satisfies ExportedHandler<Env>;

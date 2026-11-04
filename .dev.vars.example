@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development (production: npx wrangler secret put NAME)
+MAPY_API_KEY=
+# Optional: verify Cloudflare Access tokens in the Worker too
+# ACCESS_TEAM_DOMAIN=https://yourteam.cloudflareaccess.com
+# ACCESS_AUD=
