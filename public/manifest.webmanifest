@@ -1,0 +1,12 @@
+{
+  "name": "Svorka",
+  "short_name": "Svorka",
+  "description": "Evidencia zákaziek, financií, dochádzky a jázd",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f08c00",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

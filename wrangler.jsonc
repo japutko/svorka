@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "svorka",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    // React app is served as a single-page app; /api/* goes to the Worker first
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "svorka-db",
+      "database_id": "e7b0a548-5bb3-4e0c-b16c-5502b56c71ca",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Later: "triggers": { "crons": ["0 6 * * *"] } for daily notification checks
+}
