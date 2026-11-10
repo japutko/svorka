@@ -17,7 +17,7 @@ type DashState = { preset: Preset; from?: string | null; to?: string | null; wid
 
 const widgetNames: Record<string, string> = {
   quick: "Rýchle zápisy",
-  todo: "Todo",
+  todo: "Todo po termíne",
   kpi: "Súhrnné čísla",
   jobs: "Zákazky: hodiny, výnosy, náklady",
   attendance: "Dochádzka",
@@ -181,7 +181,7 @@ export function Dashboard() {
       </Group>
 
       {on("quick") && <QuickActions />}
-      {on("todo") && <TodoStrip max={5} />}
+      {on("todo") && <TodoStrip overdueOnly />}
 
       <Group gap="xs" align="flex-end">
         <ScrollArea type="never" maw="100%">
