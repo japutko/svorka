@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Anchor, Button, Checkbox, Divider, Group, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { Link } from "react-router";
-import { useCodelist, useList, useRecord, type Row } from "../api";
-import { AddressInput, CodelistSelect, CustomFields, EntityPicker, Row2 } from "../components/inputs";
+import { notifyError, useCodelist, useList, useRecord, type Row } from "../api";
+import { AddressInput, CodelistSelect, CustomFields, EmailInput, EntityPicker, PhoneInput, Row2, emailError, phoneError } from "../components/inputs";
 import { StatusBadge } from "../components/DataTable";
 import { FileSection } from "../components/Files";
 import { fmtDate } from "../format";
@@ -26,6 +26,8 @@ export function PersonForm({ id, defaults, onDone }: FormProps) {
   const v = f.v;
 
   const submit = async () => {
+    const invalid = phoneError(v.phone) ?? emailError(v.email);
+    if (invalid) return notifyError(new Error(invalid));
     const row = await f.save();
     if (!row) return;
     // Optionally continue straight to a job for this new customer
@@ -37,8 +39,8 @@ export function PersonForm({ id, defaults, onDone }: FormProps) {
     <FormShell entity="person" id={id} createdAt={v.created_at} saving={f.saving} onSave={submit} onCancel={() => onDone(null)} onDeleted={() => onDone(null)}>
       <TextInput label="Meno" required value={v.name ?? ""} onChange={(e) => f.set({ name: e.currentTarget.value })} data-autofocus />
       <Row2>
-        <TextInput label="Telefón" type="tel" value={v.phone ?? ""} onChange={(e) => f.set({ phone: e.currentTarget.value })} />
-        <TextInput label="Email" type="email" value={v.email ?? ""} onChange={(e) => f.set({ email: e.currentTarget.value })} />
+        <PhoneInput value={v.phone} onChange={(phone) => f.set({ phone })} />
+        <EmailInput value={v.email} onChange={(email) => f.set({ email })} />
       </Row2>
       <AddressInput label="Fakturačná adresa" value={v.billing_address} onChange={(billing_address) => f.set({ billing_address })} />
       <Row2>

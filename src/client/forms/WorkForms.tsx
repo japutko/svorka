@@ -3,7 +3,7 @@ import { ActionIcon, Badge, Checkbox, Divider, Group, NumberInput, Paper, Select
 import { DateTimePicker } from "@mantine/dates";
 import { IconX } from "@tabler/icons-react";
 import { notifyError, saveRecord, uploadFile, useCodelist, useList, useRecord, useSettings, type Row } from "../api";
-import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, Row2 } from "../components/inputs";
+import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, PhoneInput, Row2, phoneError } from "../components/inputs";
 import { FileSection } from "../components/Files";
 import { fmtDate, fmtNum, todayIso } from "../format";
 import type { FormProps } from "./FormsProvider";
@@ -285,6 +285,8 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
       onCancel={() => onDone(null)}
       onDeleted={() => onDone(null)}
       onSave={async () => {
+        const invalid = phoneError(v.phone);
+        if (invalid) return notifyError(new Error(invalid));
         const row = await f.save();
         if (!row) return;
         for (const p of pending) await uploadFile("inspection", row.id, p, p.name).catch(notifyError);
@@ -305,7 +307,7 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
         <CodelistSelect type="inspection_status" label="Stav" value={v.status_id} onChange={(status_id) => f.set({ status_id })} />
       </Row2>
       <AddressInput label="Lokalita" value={v.location} onChange={(location) => f.set({ location })} />
-      <TextInput label="Telefón" type="tel" value={v.phone ?? ""} onChange={(e) => f.set({ phone: e.currentTarget.value })} />
+      <PhoneInput value={v.phone} onChange={(phone) => f.set({ phone })} />
       <Textarea label="Poznámka" autosize minRows={2} value={v.note ?? ""} onChange={(e) => f.set({ note: e.currentTarget.value })} />
       <FileSection entityType="inspection" entityId={id} title="Dokumenty z obhliadky (náčrty, projekt…)" pending={pending} onPending={setPending} />
       <CustomFields entity="inspection" value={v.custom_fields} onChange={(custom_fields) => f.set({ custom_fields })} />

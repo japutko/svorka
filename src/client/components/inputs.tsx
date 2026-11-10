@@ -198,6 +198,37 @@ export function CustomFields(props: { entity: string; value: Record<string, any>
   );
 }
 
+// Loose checks: catch typos, accept the usual ways of writing the value
+export const phoneError = (s?: string | null) =>
+  !s?.trim() || /^\+?\d{9,15}$/.test(s.replace(/[\s\-/().]/g, "")) ? null : "Neplatné telefónne číslo (napr. 0905 123 456 alebo +421 905 123 456)";
+export const emailError = (s?: string | null) =>
+  !s?.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim()) ? null : "Neplatný email (napr. meno@firma.sk)";
+
+// Text field that shows its format error once the user leaves it
+function CheckedInput(props: { label: string; value: string | null | undefined; onChange: (v: string) => void; check: (s: string) => string | null; type: string; inputMode: "tel" | "email" }) {
+  const [touched, setTouched] = useState(false);
+  return (
+    <TextInput
+      label={props.label}
+      type={props.type}
+      inputMode={props.inputMode}
+      value={props.value ?? ""}
+      error={touched ? props.check(props.value ?? "") : null}
+      onBlur={() => setTouched(true)}
+      onChange={(e) => props.onChange(e.currentTarget.value)}
+    />
+  );
+}
+
+export function PhoneInput(props: { label?: string; value: string | null | undefined; onChange: (v: string) => void }) {
+  return <CheckedInput label={props.label ?? "Telefón"} type="tel" inputMode="tel" check={phoneError} value={props.value} onChange={props.onChange} />;
+}
+
+// type="text" so the browser's own email check doesn't block saving with a different message
+export function EmailInput(props: { label?: string; value: string | null | undefined; onChange: (v: string) => void }) {
+  return <CheckedInput label={props.label ?? "Email"} type="text" inputMode="email" check={emailError} value={props.value} onChange={props.onChange} />;
+}
+
 export function MoneyInput(props: { label: string; value: number | null | undefined; onChange: (v: number | null) => void; required?: boolean; description?: string }) {
   return (
     <NumberInput
