@@ -8,6 +8,7 @@ import { adminRoutes } from "./admin";
 import { notificationRoutes, runRules } from "./notifications";
 import { dashboardRoutes } from "./dashboard";
 import { geoRoutes } from "./geo";
+import { aiRoutes } from "./ai";
 
 const app = new Hono<AppEnv>().basePath("/api");
 
@@ -38,6 +39,7 @@ app.route("/admin", adminRoutes);
 app.route("/notifications", notificationRoutes);
 app.route("/dashboard", dashboardRoutes);
 app.route("/geo", geoRoutes);
+app.route("/ai", aiRoutes);
 
 app.onError((err, c) => {
   console.error(err);

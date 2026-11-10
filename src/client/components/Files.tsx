@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
 import { ActionIcon, Anchor, Badge, Button, Group, Image, Paper, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconCamera, IconDownload, IconFile, IconTrash, IconUpload, IconX } from "@tabler/icons-react";
+import { IconCamera, IconDownload, IconFile, IconScan, IconTrash, IconUpload, IconX } from "@tabler/icons-react";
 import { api, fileUrl, invalidateAll, notifyError, uploadFile, useFiles } from "../api";
 import { fmtDateTime } from "../format";
+import { useForms } from "../forms/FormsProvider";
 
 // Shrinks a photo so a multi-page receipt PDF stays small
-async function toJpeg(file: File, maxSide = 2000): Promise<Uint8Array> {
+export async function toJpeg(file: File, maxSide = 2000): Promise<Uint8Array> {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
@@ -55,6 +56,49 @@ function PickButtons({ onFiles, accept, camera = true }: { onFiles: (f: File[]) 
       </Button>
       <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={take} />
       <input ref={up} type="file" accept={accept} multiple hidden onChange={take} />
+    </Group>
+  );
+}
+
+// Opens the camera (or file picker) and hands the pages to a new ledger entry,
+// which reads them and fills itself in. The input is clicked inside the user's tap,
+// otherwise mobile browsers refuse to open the camera.
+export function useScanReceipt(defaults?: Record<string, unknown>) {
+  const { openForm } = useForms();
+  const cam = useRef<HTMLInputElement>(null);
+  const up = useRef<HTMLInputElement>(null);
+  const take = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.currentTarget.files ?? [])];
+    e.currentTarget.value = "";
+    if (files.length) openForm("ledger_entry", { defaults: { ...defaults, __pages: files } });
+  };
+  const inputs = (
+    <>
+      <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={take} />
+      <input ref={up} type="file" accept="image/*,application/pdf" multiple hidden onChange={take} />
+    </>
+  );
+  return { camera: () => cam.current?.click(), upload: () => up.current?.click(), inputs };
+}
+
+export function ScanButton(props: { defaults?: Record<string, unknown>; size?: string; fullWidth?: boolean; label?: string }) {
+  const scan = useScanReceipt(props.defaults);
+  return (
+    <Group gap={0} wrap="nowrap" style={props.fullWidth ? { width: "100%" } : undefined}>
+      <Button
+        size={props.size ?? "sm"}
+        leftSection={<IconScan size={18} />}
+        onClick={scan.camera}
+        style={{ flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+      >
+        {props.label ?? "Odfotiť doklad"}
+      </Button>
+      <Tooltip label="Nahrať súbor (fotka, PDF faktúra)">
+        <Button size={props.size ?? "sm"} px="xs" variant="filled" onClick={scan.upload} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: "1px solid rgba(255,255,255,.4)" }} aria-label="Nahrať doklad">
+          <IconUpload size={18} />
+        </Button>
+      </Tooltip>
+      {scan.inputs}
     </Group>
   );
 }

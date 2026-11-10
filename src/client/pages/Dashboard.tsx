@@ -7,6 +7,7 @@ import dayjs from "dayjs";
 import { api, notifyError, queryClient, type Row } from "../api";
 import { DataTable, StatusBadge, type Column } from "../components/DataTable";
 import { DateField } from "../components/inputs";
+import { ScanButton } from "../components/Files";
 import { TodoStrip } from "../components/Todos";
 import { useForms } from "../forms/FormsProvider";
 import { fmtDate, fmtMoney, fmtNum } from "../format";
@@ -66,7 +67,8 @@ function QuickActions() {
   const { openForm } = useForms();
   const big = { size: "lg" as const, variant: "light" as const, fullWidth: true, styles: { inner: { justifyContent: "flex-start" } } };
   return (
-    <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="xs">
+    <SimpleGrid cols={{ base: 2, sm: 6 }} spacing="xs">
+      <ScanButton size="lg" fullWidth />
       <Button {...big} leftSection={<IconClock />} onClick={() => openForm("attendance")}>
         Dochádzka
       </Button>

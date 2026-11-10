@@ -1,6 +1,7 @@
 export type Env = {
   DB: D1Database;
   FILES: R2Bucket;
+  AI: Ai;
   ASSETS: Fetcher;
   MAPY_API_KEY?: string;
   // Cloudflare Access: set both to enforce login at the Worker as well
