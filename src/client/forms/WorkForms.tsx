@@ -5,7 +5,7 @@ import { IconX } from "@tabler/icons-react";
 import { notifyError, saveRecord, uploadFile, useCodelist, useList, useRecord, useSettings, type Row } from "../api";
 import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, PhoneInput, Row2, phoneError } from "../components/inputs";
 import { FileSection } from "../components/Files";
-import { fmtDate, fmtNum, todayIso } from "../format";
+import { fmtDate, fmtMoney, fmtNum, todayIso } from "../format";
 import { useForms, type FormProps } from "./FormsProvider";
 import { FormShell, useEntityForm, useLateDefaults } from "./shared";
 
@@ -314,14 +314,56 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
 const linkTypes = [
   { value: "job", label: "Zákazka" },
   { value: "person", label: "Osoba" },
+  { value: "ledger_entry", label: "Účtovný záznam" },
+  { value: "invoice", label: "Faktúra" },
+  { value: "quote", label: "Cenová ponuka" },
+  { value: "inspection", label: "Obhliadka" },
+  { value: "attendance", label: "Dochádzka" },
+  { value: "trip", label: "Jazda" },
+  { value: "refuel", label: "Tankovanie" },
 ];
+
+const recordLabels: Record<string, (r: Row) => string> = {
+  ledger_entry: (r) => `${r.code} ${r.title} · ${fmtMoney(r.amount)}`,
+  invoice: (r) => `Faktúra ${r.number}${r.customer_name ? ` · ${r.customer_name}` : ""}`,
+  quote: (r) => `Ponuka ${fmtDate(r.created_on)} · ${r.job_title ?? ""}`,
+  inspection: (r) => `Obhliadka ${fmtDate(r.scheduled_at)} · ${r.job_title ?? ""}`,
+  attendance: (r) => `Dochádzka ${fmtDate(r.realized_on)} · ${r.person_name ?? ""} · ${r.job_title ?? "bez zákazky"}`,
+  trip: (r) => `Jazda ${fmtDate(r.date_from)} · ${r.car ?? ""}${r.km != null ? ` · ${fmtNum(r.km)} km` : ""}`,
+  refuel: (r) => `Tankovanie ${fmtDate(r.realized_on)} · ${r.car ?? ""}${r.liters ? ` · ${fmtNum(r.liters)} l` : ""}`,
+};
+
+// Records without full-text search are picked from their list, newest first
+function RecordSelect({ entity, onPick }: { entity: string; onPick: (id: number, label: string) => void }) {
+  const list = useList(entity);
+  const label = recordLabels[entity];
+  return (
+    <Select
+      label="Pridať väzbu"
+      placeholder="Hľadaj v zozname…"
+      searchable
+      limit={50}
+      data={(list.data ?? []).map((r) => ({ value: String(r.id), label: label(r) }))}
+      value={null}
+      onChange={(x) => {
+        const r = list.data?.find((row) => String(row.id) === x);
+        if (r) onPick(r.id, label(r));
+      }}
+      nothingFoundMessage={list.isLoading ? "Načítavam…" : "Nič sa nenašlo"}
+      comboboxProps={{ withinPortal: true }}
+    />
+  );
+}
 
 export function TodoForm({ id, defaults, onDone }: FormProps) {
   const f = useEntityForm("todo", id, () => ({ links: [], custom_fields: {}, ...defaults }));
-  const [linkType, setLinkType] = useState<"job" | "person">("job");
+  const [linkType, setLinkType] = useState("job");
   if (!f.v) return <FormShell loading entity="todo" onSave={() => {}} onCancel={() => onDone(null)}>{null}</FormShell>;
   const v = f.v;
   const links: Row[] = v.links ?? [];
+  const addLink = (entity_id: number, label?: string) => {
+    if (!links.some((l) => l.entity_type === linkType && l.entity_id === entity_id)) f.set({ links: [...links, { entity_type: linkType, entity_id, label }] });
+  };
   return (
     <FormShell
       entity="todo"
@@ -356,19 +398,23 @@ export function TodoForm({ id, defaults, onDone }: FormProps) {
         ))}
       </Group>
       <Group align="flex-end" gap="xs" wrap="nowrap">
-        <Select w={120} data={linkTypes} value={linkType} onChange={(x) => setLinkType((x as "job" | "person") ?? "job")} allowDeselect={false} comboboxProps={{ withinPortal: true }} />
+        <Select w={160} data={linkTypes} value={linkType} onChange={(x) => setLinkType(x ?? "job")} allowDeselect={false} comboboxProps={{ withinPortal: true }} />
         <div style={{ flex: 1 }}>
-          <EntityPicker
-            key={linkType + links.length}
-            entity={linkType}
-            label="Pridať väzbu"
-            value={null}
-            onChange={(eid, row) => {
-              if (!eid) return;
-              const label = row ? (linkType === "job" ? row.title : row.name) : undefined;
-              f.set({ links: [...links, { entity_type: linkType, entity_id: eid, label }] });
-            }}
-          />
+          {linkType === "job" || linkType === "person" ? (
+            <EntityPicker
+              key={linkType + links.length}
+              entity={linkType}
+              label="Pridať väzbu"
+              value={null}
+              onChange={(eid, row) => {
+                if (!eid) return;
+                const label = row ? (linkType === "job" ? row.title : row.name) : undefined;
+                addLink(eid, label);
+              }}
+            />
+          ) : (
+            <RecordSelect key={linkType + links.length} entity={linkType} onPick={addLink} />
+          )}
         </div>
       </Group>
       {v.closed_at && (

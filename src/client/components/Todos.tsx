@@ -33,9 +33,9 @@ export function TodoItem({ t }: { t: Row }) {
                 {l.label}
               </Anchor>
             ) : (
-              <Text key={`${l.entity_type}${l.entity_id}`} size="xs" c="dimmed">
+              <Anchor key={`${l.entity_type}${l.entity_id}`} size="xs" onClick={() => openForm(l.entity_type, { id: l.entity_id })}>
                 {l.label}
-              </Text>
+              </Anchor>
             )
           )}
           {t.rule_name && (
