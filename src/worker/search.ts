@@ -1,43 +1,57 @@
 import { Hono } from "hono";
 import type { AppEnv } from "./types";
 
-type Address = { label?: string } | null;
+// Index text is built in SQL so one record and the whole index use the same rule
+const join = (...xs: string[]) => xs.map((x) => `COALESCE(${x}, '')`).join(" || ' ' || ");
+const addr = (col: string) => `CASE WHEN json_valid(${col}) THEN json_extract(${col}, '$.label') ELSE ${col} END`;
+// "0905 123 456" is also indexed as "0905123456", so typing it without spaces works
+const digits = (col: string) => ["' '", "'-'", "'/'", "'('", "')'", "'+'"].reduce((x, ch) => `replace(${x}, ${ch}, '')`, col);
+const custom = (col: string) =>
+  `(SELECT group_concat(value, ' ') FROM json_each(CASE WHEN json_valid(${col}) THEN ${col} ELSE '{}' END) WHERE type = 'text')`;
+const notes = (type: string, idCol: string) => `(SELECT group_concat(text, ' ') FROM comment WHERE entity_type = '${type}' AND entity_id = ${idCol})`;
 
-function addressText(json: unknown): string {
-  if (!json) return "";
-  try {
-    const a = (typeof json === "string" ? JSON.parse(json) : json) as Address;
-    return a?.label ?? "";
-  } catch {
-    return String(json);
-  }
-}
+const sources: Record<"person" | "job", string> = {
+  person: `SELECT 'person', p.id, ${join("p.name", "p.email", "p.phone", digits("p.phone"), addr("p.billing_address"), custom("p.custom_fields"), notes("person", "p.id"))}
+    FROM person p`,
+  job: `SELECT 'job', j.id, ${join(
+    "j.title", "p.name", "p.phone", digits("p.phone"), "p.email", addr("j.location_address"), addr("j.billing_address"), custom("j.custom_fields"), notes("job", "j.id")
+  )}
+    FROM job j LEFT JOIN person p ON p.id = j.customer_id`,
+};
+const alias = { person: "p", job: "j" };
+
+const copyToTable = (db: D1Database, entityType: "person" | "job", where = "") =>
+  db.prepare(
+    `UPDATE ${entityType} SET search_text = (SELECT lower(text) FROM search_index s WHERE s.entity_type = '${entityType}' AND s.entity_id = ${entityType}.id) ${where}`
+  );
 
 // Rebuild the full-text entry for one person or job
 export async function reindex(db: D1Database, entityType: "person" | "job", id: number) {
-  let text = "";
-  if (entityType === "person") {
-    const p = await db.prepare("SELECT name, email, phone, billing_address FROM person WHERE id = ?").bind(id).first<Record<string, string>>();
-    if (!p) return;
-    text = [p.name, p.email, p.phone, addressText(p.billing_address)].filter(Boolean).join(" ");
-  } else {
-    const j = await db
-      .prepare(
-        `SELECT j.title, j.location_address, j.billing_address, p.name AS customer, p.phone, p.email
-         FROM job j LEFT JOIN person p ON p.id = j.customer_id WHERE j.id = ?`
-      )
-      .bind(id)
-      .first<Record<string, string>>();
-    if (!j) return;
-    text = [j.title, j.customer, j.phone, j.email, addressText(j.location_address), addressText(j.billing_address)]
-      .filter(Boolean)
-      .join(" ");
-  }
   await db.batch([
     db.prepare("DELETE FROM search_index WHERE entity_type = ? AND entity_id = ?").bind(entityType, id),
-    db.prepare("INSERT INTO search_index (entity_type, entity_id, text) VALUES (?, ?, ?)").bind(entityType, id, text),
-    db.prepare(`UPDATE ${entityType} SET search_text = ? WHERE id = ?`).bind(text.toLowerCase(), id),
+    db.prepare(`INSERT INTO search_index (entity_type, entity_id, text) ${sources[entityType]} WHERE ${alias[entityType]}.id = ?`).bind(id),
+    copyToTable(db, entityType, "WHERE id = ?").bind(id),
   ]);
+}
+
+// Bump when the indexed fields change; the next search then rebuilds everything
+const INDEX_VERSION = "2";
+let indexChecked = false;
+
+async function ensureIndex(db: D1Database) {
+  if (indexChecked) return;
+  const v = await db.prepare("SELECT value FROM setting WHERE key = 'search_index_version'").first<{ value: string }>();
+  if (v?.value !== INDEX_VERSION) {
+    await db.batch([
+      db.prepare("DELETE FROM search_index"),
+      db.prepare(`INSERT INTO search_index (entity_type, entity_id, text) ${sources.person}`),
+      db.prepare(`INSERT INTO search_index (entity_type, entity_id, text) ${sources.job}`),
+      copyToTable(db, "person"),
+      copyToTable(db, "job"),
+      db.prepare("INSERT INTO setting (key, value) VALUES ('search_index_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(INDEX_VERSION),
+    ]);
+  }
+  indexChecked = true;
 }
 
 export async function removeFromIndex(db: D1Database, entityType: string, id: number) {
@@ -59,6 +73,7 @@ searchRoutes.get("/", async (c) => {
     .map((w) => `"${w}"*`)
     .join(" ");
   if (!match) return c.json([]);
+  await ensureIndex(c.env.DB);
   const rows = await c.env.DB.prepare(
     `SELECT s.entity_type, s.entity_id,
        CASE s.entity_type WHEN 'job' THEN j.title ELSE p.name END AS label,
