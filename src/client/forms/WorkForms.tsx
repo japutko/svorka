@@ -6,7 +6,7 @@ import { notifyError, saveRecord, uploadFile, useCodelist, useList, useRecord, u
 import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, PhoneInput, Row2, phoneError } from "../components/inputs";
 import { FileSection } from "../components/Files";
 import { fmtDate, fmtNum, todayIso } from "../format";
-import type { FormProps } from "./FormsProvider";
+import { useForms, type FormProps } from "./FormsProvider";
 import { FormShell, useEntityForm, useLateDefaults } from "./shared";
 
 // "8-12, 16-18:30" -> 6.5 (same rule as the server)
@@ -207,8 +207,8 @@ export function TripForm({ id, defaults, onDone }: FormProps) {
 
 export function RefuelForm({ id, defaults, onDone }: FormProps) {
   const car = useCodelist("car");
-  const pm = useCodelist("payment_method");
-  const [asExpense, setAsExpense] = useState(!id);
+  const { openForm } = useForms();
+  const [withEntry, setWithEntry] = useState(!id);
   const f = useEntityForm("refuel", id, () => ({ realized_on: todayIso(), car_id: car.defaultId, custom_fields: {}, ...defaults }));
   useLateDefaults(f, !id, { car_id: car.defaultId });
   if (!f.v) return <FormShell loading entity="refuel" onSave={() => {}} onCancel={() => onDone(null)}>{null}</FormShell>;
@@ -222,26 +222,22 @@ export function RefuelForm({ id, defaults, onDone }: FormProps) {
       onCancel={() => onDone(null)}
       onDeleted={() => onDone(null)}
       onSave={async () => {
-        let data = v;
-        // Fuel bought with money is also an expense in the books
-        if (asExpense && !v.ledger_entry_id && v.amount) {
-          try {
-            const entry = await saveRecord("ledger_entry", {
+        const row = await f.save();
+        if (!row) return;
+        // Fuel bought with money is also an expense; the form opens prefilled so the receipt can be attached
+        if (withEntry && !row.ledger_entry_id) {
+          const entry = await openForm("ledger_entry", {
+            defaults: {
               direction: "expense",
-              realized_on: v.realized_on,
-              paid_on: v.realized_on,
-              payment_method_id: pm.defaultId,
-              amount: v.amount,
-              title: `Tankovanie ${v.liters ? `${fmtNum(v.liters)} l` : ""}`.trim(),
-              splits: [{ job_id: null, amount: v.amount }],
-            });
-            data = { ...v, ledger_entry_id: entry.id };
-          } catch (e) {
-            notifyError(e);
-          }
+              realized_on: row.realized_on,
+              amount: row.amount,
+              title: `Tankovanie ${row.liters ? `${fmtNum(row.liters)} l` : ""}`.trim(),
+              splits: [{ job_id: null, amount: row.amount }],
+            },
+          });
+          if (entry) await saveRecord("refuel", { ledger_entry_id: entry.id }, row.id).catch(notifyError);
         }
-        const row = await f.save(data);
-        if (row) onDone(row);
+        onDone(row);
       }}
     >
       <Row2>
@@ -254,7 +250,7 @@ export function RefuelForm({ id, defaults, onDone }: FormProps) {
       </Row2>
       <MoneyInput label="Suma" value={v.amount} onChange={(amount) => f.set({ amount })} />
       {!v.ledger_entry_id ? (
-        <Checkbox label="Zaevidovať aj ako výdavok v účtovníctve" checked={asExpense} onChange={(e) => setAsExpense(e.currentTarget.checked)} />
+        <Checkbox label="Po uložení rovno založiť účtovný záznam" checked={withEntry} onChange={(e) => setWithEntry(e.currentTarget.checked)} />
       ) : (
         <Text size="sm" c="dimmed">
           Účtovný záznam: {v.ledger_code}
