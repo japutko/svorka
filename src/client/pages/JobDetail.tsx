@@ -1,5 +1,5 @@
 import { Anchor, Badge, Button, Grid, Group, Loader, Paper, SimpleGrid, Stack, Tabs, Text, Title } from "@mantine/core";
-import { IconArrowLeft, IconEdit, IconPhone } from "@tabler/icons-react";
+import { IconArrowLeft, IconEdit, IconMapPin, IconPhone } from "@tabler/icons-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useList, useRecord } from "../api";
 import { CommentJournal } from "../components/CommentJournal";
@@ -15,6 +15,7 @@ import { EntityTable } from "./ListPages";
 export function JobDetail() {
   const id = Number(useParams().id);
   const { data: job, isLoading } = useRecord("job", id);
+  const customer = useRecord("person", job?.customer_id ?? undefined);
   const { openForm } = useForms();
   const [sp, setSp] = useSearchParams();
   const tab = sp.get("tab") ?? "notes";
@@ -73,6 +74,12 @@ export function JobDetail() {
                 <Anchor href={`tel:${job.customer_phone}`} size="sm">
                   {job.customer_phone}
                 </Anchor>
+              </Group>
+            )}
+            {customer.data?.billing_address?.label && (
+              <Group gap={4} wrap="nowrap">
+                <IconMapPin size={14} />
+                <AddressLink value={customer.data.billing_address} />
               </Group>
             )}
             <Text size="xs" c="dimmed" mt="xs">

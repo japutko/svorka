@@ -3,10 +3,10 @@ import { ActionIcon, Badge, Checkbox, Divider, Group, NumberInput, Paper, Select
 import { DateTimePicker } from "@mantine/dates";
 import { IconX } from "@tabler/icons-react";
 import { notifyError, saveRecord, uploadFile, useCodelist, useList, useRecord, useSettings, type Row } from "../api";
-import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, Row2 } from "../components/inputs";
+import { AddressInput, CodelistSelect, CustomFields, DateField, EntityPicker, MoneyInput, PhoneInput, Row2, phoneError } from "../components/inputs";
 import { FileSection } from "../components/Files";
-import { fmtDate, fmtNum, todayIso } from "../format";
-import type { FormProps } from "./FormsProvider";
+import { fmtDate, fmtMoney, fmtNum, todayIso } from "../format";
+import { useForms, type FormProps } from "./FormsProvider";
 import { FormShell, useEntityForm, useLateDefaults } from "./shared";
 
 // "8-12, 16-18:30" -> 6.5 (same rule as the server)
@@ -207,8 +207,8 @@ export function TripForm({ id, defaults, onDone }: FormProps) {
 
 export function RefuelForm({ id, defaults, onDone }: FormProps) {
   const car = useCodelist("car");
-  const pm = useCodelist("payment_method");
-  const [asExpense, setAsExpense] = useState(!id);
+  const { openForm } = useForms();
+  const [withEntry, setWithEntry] = useState(!id);
   const f = useEntityForm("refuel", id, () => ({ realized_on: todayIso(), car_id: car.defaultId, custom_fields: {}, ...defaults }));
   useLateDefaults(f, !id, { car_id: car.defaultId });
   if (!f.v) return <FormShell loading entity="refuel" onSave={() => {}} onCancel={() => onDone(null)}>{null}</FormShell>;
@@ -222,26 +222,22 @@ export function RefuelForm({ id, defaults, onDone }: FormProps) {
       onCancel={() => onDone(null)}
       onDeleted={() => onDone(null)}
       onSave={async () => {
-        let data = v;
-        // Fuel bought with money is also an expense in the books
-        if (asExpense && !v.ledger_entry_id && v.amount) {
-          try {
-            const entry = await saveRecord("ledger_entry", {
+        const row = await f.save();
+        if (!row) return;
+        // Fuel bought with money is also an expense; the form opens prefilled so the receipt can be attached
+        if (withEntry && !row.ledger_entry_id) {
+          const entry = await openForm("ledger_entry", {
+            defaults: {
               direction: "expense",
-              realized_on: v.realized_on,
-              paid_on: v.realized_on,
-              payment_method_id: pm.defaultId,
-              amount: v.amount,
-              title: `Tankovanie ${v.liters ? `${fmtNum(v.liters)} l` : ""}`.trim(),
-              splits: [{ job_id: null, amount: v.amount }],
-            });
-            data = { ...v, ledger_entry_id: entry.id };
-          } catch (e) {
-            notifyError(e);
-          }
+              realized_on: row.realized_on,
+              amount: row.amount,
+              title: `Tankovanie ${row.liters ? `${fmtNum(row.liters)} l` : ""}`.trim(),
+              splits: [{ job_id: null, amount: row.amount }],
+            },
+          });
+          if (entry) await saveRecord("refuel", { ledger_entry_id: entry.id }, row.id).catch(notifyError);
         }
-        const row = await f.save(data);
-        if (row) onDone(row);
+        onDone(row);
       }}
     >
       <Row2>
@@ -254,7 +250,7 @@ export function RefuelForm({ id, defaults, onDone }: FormProps) {
       </Row2>
       <MoneyInput label="Suma" value={v.amount} onChange={(amount) => f.set({ amount })} />
       {!v.ledger_entry_id ? (
-        <Checkbox label="Zaevidovať aj ako výdavok v účtovníctve" checked={asExpense} onChange={(e) => setAsExpense(e.currentTarget.checked)} />
+        <Checkbox label="Po uložení rovno založiť účtovný záznam" checked={withEntry} onChange={(e) => setWithEntry(e.currentTarget.checked)} />
       ) : (
         <Text size="sm" c="dimmed">
           Účtovný záznam: {v.ledger_code}
@@ -285,6 +281,8 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
       onCancel={() => onDone(null)}
       onDeleted={() => onDone(null)}
       onSave={async () => {
+        const invalid = phoneError(v.phone);
+        if (invalid) return notifyError(new Error(invalid));
         const row = await f.save();
         if (!row) return;
         for (const p of pending) await uploadFile("inspection", row.id, p, p.name).catch(notifyError);
@@ -305,7 +303,7 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
         <CodelistSelect type="inspection_status" label="Stav" value={v.status_id} onChange={(status_id) => f.set({ status_id })} />
       </Row2>
       <AddressInput label="Lokalita" value={v.location} onChange={(location) => f.set({ location })} />
-      <TextInput label="Telefón" type="tel" value={v.phone ?? ""} onChange={(e) => f.set({ phone: e.currentTarget.value })} />
+      <PhoneInput value={v.phone} onChange={(phone) => f.set({ phone })} />
       <Textarea label="Poznámka" autosize minRows={2} value={v.note ?? ""} onChange={(e) => f.set({ note: e.currentTarget.value })} />
       <FileSection entityType="inspection" entityId={id} title="Dokumenty z obhliadky (náčrty, projekt…)" pending={pending} onPending={setPending} />
       <CustomFields entity="inspection" value={v.custom_fields} onChange={(custom_fields) => f.set({ custom_fields })} />
@@ -316,14 +314,56 @@ export function InspectionForm({ id, defaults, onDone }: FormProps) {
 const linkTypes = [
   { value: "job", label: "Zákazka" },
   { value: "person", label: "Osoba" },
+  { value: "ledger_entry", label: "Účtovný záznam" },
+  { value: "invoice", label: "Faktúra" },
+  { value: "quote", label: "Cenová ponuka" },
+  { value: "inspection", label: "Obhliadka" },
+  { value: "attendance", label: "Dochádzka" },
+  { value: "trip", label: "Jazda" },
+  { value: "refuel", label: "Tankovanie" },
 ];
+
+const recordLabels: Record<string, (r: Row) => string> = {
+  ledger_entry: (r) => `${r.code} ${r.title} · ${fmtMoney(r.amount)}`,
+  invoice: (r) => `Faktúra ${r.number}${r.customer_name ? ` · ${r.customer_name}` : ""}`,
+  quote: (r) => `Ponuka ${fmtDate(r.created_on)} · ${r.job_title ?? ""}`,
+  inspection: (r) => `Obhliadka ${fmtDate(r.scheduled_at)} · ${r.job_title ?? ""}`,
+  attendance: (r) => `Dochádzka ${fmtDate(r.realized_on)} · ${r.person_name ?? ""} · ${r.job_title ?? "bez zákazky"}`,
+  trip: (r) => `Jazda ${fmtDate(r.date_from)} · ${r.car ?? ""}${r.km != null ? ` · ${fmtNum(r.km)} km` : ""}`,
+  refuel: (r) => `Tankovanie ${fmtDate(r.realized_on)} · ${r.car ?? ""}${r.liters ? ` · ${fmtNum(r.liters)} l` : ""}`,
+};
+
+// Records without full-text search are picked from their list, newest first
+function RecordSelect({ entity, onPick }: { entity: string; onPick: (id: number, label: string) => void }) {
+  const list = useList(entity);
+  const label = recordLabels[entity];
+  return (
+    <Select
+      label="Pridať väzbu"
+      placeholder="Hľadaj v zozname…"
+      searchable
+      limit={50}
+      data={(list.data ?? []).map((r) => ({ value: String(r.id), label: label(r) }))}
+      value={null}
+      onChange={(x) => {
+        const r = list.data?.find((row) => String(row.id) === x);
+        if (r) onPick(r.id, label(r));
+      }}
+      nothingFoundMessage={list.isLoading ? "Načítavam…" : "Nič sa nenašlo"}
+      comboboxProps={{ withinPortal: true }}
+    />
+  );
+}
 
 export function TodoForm({ id, defaults, onDone }: FormProps) {
   const f = useEntityForm("todo", id, () => ({ links: [], custom_fields: {}, ...defaults }));
-  const [linkType, setLinkType] = useState<"job" | "person">("job");
+  const [linkType, setLinkType] = useState("job");
   if (!f.v) return <FormShell loading entity="todo" onSave={() => {}} onCancel={() => onDone(null)}>{null}</FormShell>;
   const v = f.v;
   const links: Row[] = v.links ?? [];
+  const addLink = (entity_id: number, label?: string) => {
+    if (!links.some((l) => l.entity_type === linkType && l.entity_id === entity_id)) f.set({ links: [...links, { entity_type: linkType, entity_id, label }] });
+  };
   return (
     <FormShell
       entity="todo"
@@ -358,19 +398,23 @@ export function TodoForm({ id, defaults, onDone }: FormProps) {
         ))}
       </Group>
       <Group align="flex-end" gap="xs" wrap="nowrap">
-        <Select w={120} data={linkTypes} value={linkType} onChange={(x) => setLinkType((x as "job" | "person") ?? "job")} allowDeselect={false} comboboxProps={{ withinPortal: true }} />
+        <Select w={160} data={linkTypes} value={linkType} onChange={(x) => setLinkType(x ?? "job")} allowDeselect={false} comboboxProps={{ withinPortal: true }} />
         <div style={{ flex: 1 }}>
-          <EntityPicker
-            key={linkType + links.length}
-            entity={linkType}
-            label="Pridať väzbu"
-            value={null}
-            onChange={(eid, row) => {
-              if (!eid) return;
-              const label = row ? (linkType === "job" ? row.title : row.name) : undefined;
-              f.set({ links: [...links, { entity_type: linkType, entity_id: eid, label }] });
-            }}
-          />
+          {linkType === "job" || linkType === "person" ? (
+            <EntityPicker
+              key={linkType + links.length}
+              entity={linkType}
+              label="Pridať väzbu"
+              value={null}
+              onChange={(eid, row) => {
+                if (!eid) return;
+                const label = row ? (linkType === "job" ? row.title : row.name) : undefined;
+                addLink(eid, label);
+              }}
+            />
+          ) : (
+            <RecordSelect key={linkType + links.length} entity={linkType} onPick={addLink} />
+          )}
         </div>
       </Group>
       {v.closed_at && (

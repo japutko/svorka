@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "./types";
+import { reindex } from "./search";
 
 // Lookup lists, custom fields, saved views, settings and comment journals
 export const adminRoutes = new Hono<AppEnv>();
@@ -169,16 +170,25 @@ adminRoutes.get("/comments", async (c) => {
   return c.json(rows.results);
 });
 
+// Notes are searchable, so the record's index entry follows them
+const reindexOwner = async (db: D1Database, c: { entity_type: string; entity_id: number } | null) => {
+  if (c && (c.entity_type === "person" || c.entity_type === "job")) await reindex(db, c.entity_type, c.entity_id);
+};
+
 adminRoutes.post("/comments", async (c) => {
   const d = await c.req.json<{ entity_type: string; entity_id: number; text: string }>();
   if (!d.text?.trim()) return c.json({ error: "Prázdny komentár" }, 400);
   const row = await c.env.DB.prepare("INSERT INTO comment (entity_type, entity_id, text) VALUES (?, ?, ?) RETURNING *")
     .bind(d.entity_type, d.entity_id, d.text.trim())
-    .first();
+    .first<{ entity_type: string; entity_id: number }>();
+  await reindexOwner(c.env.DB, row);
   return c.json(row, 201);
 });
 
 adminRoutes.delete("/comments/:id", async (c) => {
-  await c.env.DB.prepare("DELETE FROM comment WHERE id = ?").bind(c.req.param("id")).run();
+  const row = await c.env.DB.prepare("DELETE FROM comment WHERE id = ? RETURNING entity_type, entity_id")
+    .bind(c.req.param("id"))
+    .first<{ entity_type: string; entity_id: number }>();
+  await reindexOwner(c.env.DB, row);
   return c.json({ ok: true });
 });

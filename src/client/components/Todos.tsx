@@ -1,4 +1,5 @@
-import { Anchor, Badge, Checkbox, Group, Paper, Stack, Text } from "@mantine/core";
+import { useState } from "react";
+import { Anchor, Badge, Button, Checkbox, Group, Paper, Stack, Text } from "@mantine/core";
 import { Link } from "react-router";
 import { notifyError, saveRecord, useList, type Row } from "../api";
 import { fmtDate, todayIso } from "../format";
@@ -33,9 +34,9 @@ export function TodoItem({ t }: { t: Row }) {
                 {l.label}
               </Anchor>
             ) : (
-              <Text key={`${l.entity_type}${l.entity_id}`} size="xs" c="dimmed">
+              <Anchor key={`${l.entity_type}${l.entity_id}`} size="xs" onClick={() => openForm(l.entity_type, { id: l.entity_id })}>
                 {l.label}
-              </Text>
+              </Anchor>
             )
           )}
           {t.rule_name && (
@@ -54,28 +55,38 @@ export function TodoItem({ t }: { t: Row }) {
   );
 }
 
-// Open todos shown at the top of list screens; optionally only those linked to one record
-export function TodoStrip({ entityType, entityId, max = 3 }: { entityType?: string; entityId?: number; max?: number }) {
+// Open todos: overdue ones on the dashboard, or all linked to one record
+export function TodoStrip({ entityType, entityId, overdueOnly, max = 3 }: { entityType?: string; entityId?: number; overdueOnly?: boolean; max?: number }) {
   const { data } = useList("todo", { done: 0 });
+  const [expanded, setExpanded] = useState(false);
+  const today = todayIso();
   let todos = data ?? [];
   if (entityType && entityId) todos = todos.filter((t) => (t.links ?? []).some((l: Row) => l.entity_type === entityType && l.entity_id === entityId));
+  if (overdueOnly) todos = todos.filter((t) => t.due_on && t.due_on < today);
   if (!todos.length) return null;
-  const urgent = todos.filter((t) => t.due_on && t.due_on <= todayIso()).length;
+  const urgent = todos.filter((t) => t.due_on && t.due_on <= today).length;
+  const rest = todos.length - max;
   return (
     <Paper withBorder p="xs" radius="md" bg="var(--mantine-color-orange-light)">
       <Group justify="space-between" mb={4}>
         <Text size="sm" fw={700} component="div">
-          Todo {urgent > 0 && <Badge size="sm" color="red" ml={4}>{urgent} na dnes / po termíne</Badge>}
+          {overdueOnly ? `Todo po termíne (${todos.length})` : "Todo"}
+          {!overdueOnly && urgent > 0 && <Badge size="sm" color="red" ml={4}>{urgent} na dnes / po termíne</Badge>}
         </Text>
         <Anchor component={Link} to="/todo" size="xs">
-          všetky ({todos.length})
+          všetky todo
         </Anchor>
       </Group>
       <Stack gap={6}>
-        {todos.slice(0, max).map((t) => (
+        {(expanded ? todos : todos.slice(0, max)).map((t) => (
           <TodoItem key={t.id} t={t} />
         ))}
       </Stack>
+      {rest > 0 && (
+        <Button size="compact-xs" variant="subtle" mt={4} onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Zobraziť menej" : `+ ďalšie (${rest})`}
+        </Button>
+      )}
     </Paper>
   );
 }

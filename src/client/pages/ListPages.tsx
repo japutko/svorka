@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, useList } from "../api";
 import { DataTable, type Column, type TableState } from "../components/DataTable";
-import { TodoStrip } from "../components/Todos";
 import { useForms } from "../forms/FormsProvider";
 import {
   attendanceColumns, inspectionColumns, invoiceColumns, jobColumns, jobDefaultState, jobRowStyle, ledgerColumns, personColumns,
@@ -59,7 +58,6 @@ export function JobsPage() {
   return (
     <Stack>
       <PageHeader title="Zákazky" />
-      <TodoStrip />
       <EntityTable entity="job" columns={jobColumns} newLabel="Nová zákazka" defaultState={jobDefaultState} rowStyle={jobRowStyle} onRowClick={(r) => navigate(`/zakazky/${r.id}`)} />
     </Stack>
   );
@@ -69,7 +67,6 @@ export function PersonsPage() {
   return (
     <Stack>
       <PageHeader title="Osoby" />
-      <TodoStrip />
       <EntityTable entity="person" columns={personColumns} newLabel="Nová osoba" defaultState={{ sort: [{ key: "created_at", dir: "desc" }] }} />
     </Stack>
   );
@@ -94,7 +91,6 @@ export function FinancePage() {
   return (
     <Stack>
       <PageHeader title="Financie" />
-      <TodoStrip />
       {t && (
         <SimpleGrid cols={{ base: 2, sm: 4 }}>
           <Kpi label="Pohľadávky (dlžia mi)" value={fmtMoney(t.receivable)} color="orange" />
@@ -118,7 +114,6 @@ export function DocumentsPage() {
   return (
     <Stack>
       <PageHeader title="Obhliadky, ponuky, faktúry" />
-      <TodoStrip />
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="sm">
           <Tabs.Tab value="inspection">Obhliadky</Tabs.Tab>
@@ -167,7 +162,6 @@ export function WorkPage() {
   return (
     <Stack>
       <PageHeader title="Dochádzka a jazdy" />
-      <TodoStrip />
       <FuelBalance />
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="sm">

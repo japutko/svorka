@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { Button, Checkbox, Group, Menu, Paper, ScrollArea, SegmentedControl, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Button, Checkbox, Group, Menu, Paper, ScrollArea, SegmentedControl, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { IconCar, IconClock, IconDeviceFloppy, IconGasStation, IconListCheck, IconReceipt, IconSettings } from "@tabler/icons-react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import dayjs from "dayjs";
 import { api, notifyError, queryClient, type Row } from "../api";
 import { DataTable, StatusBadge, type Column } from "../components/DataTable";
 import { DateField } from "../components/inputs";
 import { TodoStrip } from "../components/Todos";
 import { useForms } from "../forms/FormsProvider";
-import { fmtMoney, fmtNum } from "../format";
+import { fmtDate, fmtMoney, fmtNum } from "../format";
 import { FuelBalance } from "./ListPages";
 
 type Preset = "this_month" | "last_month" | "this_year" | "all" | "custom";
@@ -17,11 +17,13 @@ type DashState = { preset: Preset; from?: string | null; to?: string | null; wid
 
 const widgetNames: Record<string, string> = {
   quick: "Rýchle zápisy",
-  todo: "Todo",
+  todo: "Todo po termíne",
   kpi: "Súhrnné čísla",
   jobs: "Zákazky: hodiny, výnosy, náklady",
   attendance: "Dochádzka",
   fuel: "Kilometrový fond",
+  active_jobs: "Všetky aktívne zákazky",
+  active_leads: "Všetci aktívni leads",
 };
 const defaultState: DashState = { preset: "last_month", widgets: Object.keys(widgetNames) };
 
@@ -84,6 +86,41 @@ function QuickActions() {
   );
 }
 
+function ActiveJobs({ title, rows, showComment }: { title: string; rows: Row[] | undefined; showComment?: boolean }) {
+  return (
+    <Paper withBorder p="sm">
+      <Text fw={700} mb="xs">
+        {title} ({rows?.length ?? 0})
+      </Text>
+      <Stack gap={6}>
+        {rows?.map((j) => (
+          <div key={j.id}>
+            <Group gap="xs" wrap="nowrap">
+              <StatusBadge label={j.status} color={j.status_color} />
+              <Anchor component={Link} to={`/zakazky/${j.id}`} size="sm" fw={500}>
+                {j.title}
+              </Anchor>
+              <Text size="xs" c="dimmed">
+                {j.customer_name}
+              </Text>
+            </Group>
+            {showComment && j.last_comment && (
+              <Text size="xs" c="dimmed" lineClamp={2} ml="xs">
+                {fmtDate(j.last_comment_at)}: {j.last_comment}
+              </Text>
+            )}
+          </div>
+        ))}
+        {!rows?.length && (
+          <Text size="sm" c="dimmed">
+            Žiadne
+          </Text>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
 type SavedView = { id: number; name: string; state: DashState; is_default: number };
 
 export function Dashboard() {
@@ -102,6 +139,11 @@ export function Dashboard() {
   const [from, to] = range(state);
   const dash = useQuery({ queryKey: ["dashboard", from, to], queryFn: () => api(`/dashboard?from=${from}&to=${to}`) });
   const t = dash.data?.totals;
+  const active = useQuery({
+    queryKey: ["dashboard", "active"],
+    queryFn: () => api<{ active_jobs: Row[]; active_leads: Row[] }>("/dashboard/active"),
+    enabled: state.widgets.includes("active_jobs") || state.widgets.includes("active_leads"),
+  });
   const on = (w: string) => state.widgets.includes(w);
 
   const save = async () => {
@@ -181,7 +223,14 @@ export function Dashboard() {
       </Group>
 
       {on("quick") && <QuickActions />}
-      {on("todo") && <TodoStrip max={5} />}
+      {on("todo") && <TodoStrip overdueOnly />}
+
+      {(on("active_jobs") || on("active_leads")) && (
+        <SimpleGrid cols={{ base: 1, md: on("active_jobs") && on("active_leads") ? 2 : 1 }}>
+          {on("active_jobs") && <ActiveJobs title="Všetky aktívne zákazky" rows={active.data?.active_jobs} />}
+          {on("active_leads") && <ActiveJobs title="Všetci aktívni leads" rows={active.data?.active_leads} showComment />}
+        </SimpleGrid>
+      )}
 
       <Group gap="xs" align="flex-end">
         <ScrollArea type="never" maw="100%">

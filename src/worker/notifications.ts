@@ -134,17 +134,3 @@ notificationRoutes.post("/run", async (c) => {
   const id = c.req.query("rule_id");
   return c.json(await runRules(c.env.DB, id ? Number(id) : undefined));
 });
-
-// Information panels: active jobs and active leads with their latest comment
-notificationRoutes.get("/overview", async (c) => {
-  const jobs = await c.env.DB.prepare(
-    `SELECT id, title, customer_name, status, status_color, is_lead, last_activity_at,
-       (SELECT text FROM comment WHERE entity_type = 'job' AND entity_id = v_job.id ORDER BY created_at DESC LIMIT 1) AS last_comment,
-       (SELECT created_at FROM comment WHERE entity_type = 'job' AND entity_id = v_job.id ORDER BY created_at DESC LIMIT 1) AS last_comment_at
-     FROM v_job WHERE is_active = 1 AND status_active = 1 ORDER BY created_at DESC`
-  ).all<{ is_lead: number }>();
-  return c.json({
-    active_jobs: jobs.results.filter((j) => !j.is_lead),
-    active_leads: jobs.results.filter((j) => j.is_lead),
-  });
-});

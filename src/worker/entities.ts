@@ -128,6 +128,7 @@ export const entities: Record<string, EntityConfig> = {
     json: ["custom_fields"],
     required: ["date_from"],
     defaultOrder: "date_from DESC, id DESC",
+    polymorphic: true,
     prepare: async (d, db) => {
       if ("date_from" in d && !d.date_to) d.date_to = d.date_from;
       if (d.km_before != null && d.km_after != null && d.km_before !== "" && d.km_after !== "") {
@@ -147,6 +148,7 @@ export const entities: Record<string, EntityConfig> = {
     json: ["custom_fields"],
     required: ["realized_on"],
     defaultOrder: "realized_on DESC, id DESC",
+    polymorphic: true,
   },
   todo: {
     table: "todo",
