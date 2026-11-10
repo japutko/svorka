@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { Anchor, Badge, Button, Grid, Group, Modal, NumberInput, Paper, Select, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
+import { Badge, Button, Group, Modal, NumberInput, Paper, Select, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery } from "@tanstack/react-query";
 import { IconPlayerPlay, IconPlus } from "@tabler/icons-react";
-import { Link } from "react-router";
 import { api, invalidateAll, notifyError, queryClient, type Row } from "../api";
-import { StatusBadge } from "../components/DataTable";
-import { fmtDate, fmtDateTime } from "../format";
+import { fmtDateTime } from "../format";
 import { PageHeader } from "./ListPages";
 
 type Rule = { id: number; name: string; kind: string; params: Record<string, any>; enabled: number; last_run_at: string | null };
@@ -70,7 +68,6 @@ function RuleEditor({ rule, onClose }: { rule: Partial<Rule> | null; onClose: ()
 
 export function NotificationsPage() {
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("/notifications/rules") });
-  const overview = useQuery({ queryKey: ["overview"], queryFn: () => api<{ active_jobs: Row[]; active_leads: Row[] }>("/notifications/overview") });
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -92,34 +89,6 @@ export function NotificationsPage() {
       setRunning(false);
     }
   };
-
-  const jobList = (rows: Row[] | undefined, showComment: boolean) => (
-    <Stack gap={6}>
-      {rows?.map((j) => (
-        <div key={j.id}>
-          <Group gap="xs" wrap="nowrap">
-            <StatusBadge label={j.status} color={j.status_color} />
-            <Anchor component={Link} to={`/zakazky/${j.id}`} size="sm" fw={500}>
-              {j.title}
-            </Anchor>
-            <Text size="xs" c="dimmed">
-              {j.customer_name}
-            </Text>
-          </Group>
-          {showComment && j.last_comment && (
-            <Text size="xs" c="dimmed" lineClamp={2} ml="xs">
-              {fmtDate(j.last_comment_at)}: {j.last_comment}
-            </Text>
-          )}
-        </div>
-      ))}
-      {!rows?.length && (
-        <Text size="sm" c="dimmed">
-          Žiadne
-        </Text>
-      )}
-    </Stack>
-  );
 
   return (
     <Stack>
@@ -180,24 +149,6 @@ export function NotificationsPage() {
           </Paper>
         ))}
       </Stack>
-      <Grid>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <Paper withBorder p="sm">
-            <Text fw={700} mb="xs">
-              Aktívne zákazky ({overview.data?.active_jobs.length ?? 0})
-            </Text>
-            {jobList(overview.data?.active_jobs, false)}
-          </Paper>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <Paper withBorder p="sm">
-            <Text fw={700} mb="xs">
-              Aktívne leady ({overview.data?.active_leads.length ?? 0})
-            </Text>
-            {jobList(overview.data?.active_leads, true)}
-          </Paper>
-        </Grid.Col>
-      </Grid>
       {editing && <RuleEditor rule={editing} onClose={() => setEditing(null)} />}
     </Stack>
   );
