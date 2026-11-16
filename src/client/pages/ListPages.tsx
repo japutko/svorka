@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, useList } from "../api";
 import { DataTable, type Column, type TableState } from "../components/DataTable";
 import { useForms } from "../forms/FormsProvider";
+import { ScanButton } from "../components/Files";
 import {
   attendanceColumns, inspectionColumns, invoiceColumns, jobColumns, jobDefaultState, jobRowStyle, ledgerColumns, personColumns,
   quoteColumns, refuelColumns, tripColumns,
@@ -90,7 +91,9 @@ export function FinancePage() {
   const t = dash.data?.totals;
   return (
     <Stack>
-      <PageHeader title="Financie" />
+      <PageHeader title="Financie">
+        <ScanButton />
+      </PageHeader>
       {t && (
         <SimpleGrid cols={{ base: 2, sm: 4 }}>
           <Kpi label="Pohľadávky (dlžia mi)" value={fmtMoney(t.receivable)} color="orange" />

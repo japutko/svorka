@@ -20,6 +20,8 @@
   ],
   // Documents (receipts, quotes, invoices, inspection files). Create once: npx wrangler r2 bucket create svorka-files
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "svorka-files" }],
+  // Workers AI reads scanned receipts (no key needed; billed to the Cloudflare account, free daily allowance)
+  "ai": { "binding": "AI" },
   // Daily notification rules -> todos (05:00 UTC)
   "triggers": { "crons": ["0 5 * * *"] }
   // Secrets (npx wrangler secret put …): MAPY_API_KEY; optional ACCESS_TEAM_DOMAIN + ACCESS_AUD
