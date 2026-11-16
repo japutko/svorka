@@ -2,15 +2,45 @@
 
 Record-keeping app for an electrician sole trader: customers and jobs, finances, inspections/quotes/invoices, attendance and trips, to-dos and reminders. Installable PWA for phone and PC.
 
-## Stack
+## What is deployed where
 
-- **Cloudflare Workers** (static assets + API in one Worker), **D1** database `svorka-db` (EU jurisdiction)
-- **Vite + React + TypeScript**, **Mantine** UI
-- **Hono** API under `/api/*`
-- **R2** bucket `svorka-files` for documents (folder layout ready for a later OneDrive backend, see `src/worker/files.ts`)
-- **Cron Trigger** (daily 05:00 UTC) turns notification rules into todos
-- **Mapy.com** address autocomplete (secret `MAPY_API_KEY`; without it addresses are plain text)
-- **Cloudflare Access** for login (optional token check in the Worker via `ACCESS_TEAM_DOMAIN` + `ACCESS_AUD`)
+Everything runs in one Cloudflare account; the source lives on GitHub. There is no other server.
+
+| What | Where | Notes |
+| --- | --- | --- |
+| Source code | GitHub `japutko/svorka` | `main` is production |
+| Build + deploy | Cloudflare Workers Builds | Runs on every push to `main`: `npm run build`, then `npm run deploy` |
+| App (web UI + API) | Cloudflare Worker `svorka` | https://svorka.jakubsebok.workers.dev — serves the React app and `/api/*` |
+| Database | Cloudflare D1 `svorka-db` (EU jurisdiction) | Binding `DB`; migrations in `migrations/` are applied on deploy |
+| Documents | Cloudflare R2 bucket `svorka-files` | Binding `FILES`; receipts, quotes, invoices, inspection files |
+| Receipt reading | Cloudflare Workers AI | Binding `AI`; no key, billed to the Cloudflare account |
+| Daily job | Cron Trigger on the same Worker | 05:00 UTC, turns notification rules into todos |
+| Login | Cloudflare Access (Zero Trust) | Configured in the dashboard, in front of the Worker's domain |
+| Address autocomplete | Mapy.com API (external) | Worker secret `MAPY_API_KEY`; without it addresses are plain text |
+
+Secrets are stored on the Worker (`npx wrangler secret put …`), never in the repo: `MAPY_API_KEY`, and optionally
+`ACCESS_TEAM_DOMAIN` + `ACCESS_AUD`. Resource names and bindings are in `wrangler.jsonc`.
+
+## Architecture
+
+Svorka is a single Cloudflare Worker. It serves the built React single-page app as static assets and handles
+every request under `/api/*` with a **Hono** API (`src/worker/index.ts`); any other path falls back to
+`index.html`, so client-side routing works. The browser only ever talks to this one origin.
+
+The client (`src/client/`) is **Vite + React + TypeScript** with **Mantine** UI, installable as a PWA. It is
+deliberately generic: every list is the same `DataTable` and every form opens through `useForms().openForm(entity)`,
+driven by per-entity column and form definitions.
+
+The API mirrors that: `entities.ts` provides generic CRUD under `/api/e/*` for all tables, with separate modules
+for search (SQLite FTS5), files, dashboard, notifications, admin (lookup lists, custom fields), geo (Mapy.com
+proxy) and AI. All data is in D1 (SQLite); user-defined fields live in each table's `custom_fields` JSON column.
+Files go through a small `Storage` interface backed by R2 (`src/worker/files.ts`), so a OneDrive backend can
+replace it later. Scanned receipts are sent to a Workers AI vision model, which returns structured fields that
+prefill the ledger entry.
+
+Authentication is handled at the edge by Cloudflare Access. When `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set,
+the Worker also verifies the Access token on every API request (`src/worker/auth.ts`), so the `workers.dev` URL
+can't bypass the login. The same Worker has a `scheduled` handler for the daily cron.
 
 ## Screens
 
