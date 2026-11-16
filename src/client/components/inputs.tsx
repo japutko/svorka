@@ -4,7 +4,7 @@ import { DateInput } from "@mantine/dates";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconMapPin } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, useCodelist, useFieldDefs, useRecord, type Address, type Row } from "../api";
+import { api, queryClient, useCodelist, useFieldDefs, useRecord, type Address, type Row } from "../api";
 import { mapLink } from "../format";
 import { useForms } from "../forms/FormsProvider";
 
@@ -69,19 +69,30 @@ export function EntityPicker(props: {
   const [debounced] = useDebouncedValue(search, 200);
   const current = useRecord(props.entity, props.value ?? undefined);
   const currentLabel = current.data ? String(props.entity === "job" ? current.data.title : current.data.name) : "";
+  const searching = debounced.length >= 2 && debounced !== currentLabel;
   const hits = useQuery({
     queryKey: ["search", props.entity, debounced],
     queryFn: () => api<SearchHit[]>(`/search?types=${props.entity}&q=${encodeURIComponent(debounced)}`),
-    enabled: debounced.length >= 2 && debounced !== currentLabel,
+    enabled: searching,
+  });
+  // Before typing, the field offers the records picked last
+  const recent = useQuery({
+    queryKey: ["recent", props.entity],
+    queryFn: () => api<SearchHit[]>(`/search/recent?types=${props.entity}`),
+    staleTime: 30_000,
   });
 
   const data = useMemo(() => {
-    const opts = (hits.data ?? []).map((h) => ({ value: String(h.entity_id), label: h.sub ? `${h.label} · ${h.sub}` : h.label }));
-    if (props.value && !opts.some((o) => o.value === String(props.value)))
-      opts.unshift({ value: String(props.value), label: currentLabel || `#${props.value}` });
-    opts.push({ value: CREATE, label: `+ Nová ${entityNames[props.entity]}${search && search !== currentLabel ? `: ${search}` : ""}` });
-    return opts;
-  }, [hits.data, props.value, currentLabel, search, props.entity]);
+    const option = (h: SearchHit) => ({ value: String(h.entity_id), label: h.sub ? `${h.label} · ${h.sub}` : h.label });
+    const current = props.value ? [{ value: String(props.value), label: currentLabel || `#${props.value}` }] : [];
+    const create = { value: CREATE, label: `+ Nová ${entityNames[props.entity]}${search && search !== currentLabel ? `: ${search}` : ""}` };
+    if (!searching) {
+      const items = (recent.data ?? []).filter((h) => h.entity_id !== props.value).map(option);
+      return [...current, ...(items.length ? [{ group: "Naposledy použité", items }] : []), create];
+    }
+    const opts = (hits.data ?? []).map(option);
+    return [...current.filter((c) => !opts.some((o) => o.value === c.value)), ...opts, create];
+  }, [hits.data, recent.data, searching, props.value, currentLabel, search, props.entity]);
 
   useEffect(() => {
     if (currentLabel) setSearch(currentLabel);
@@ -106,10 +117,16 @@ export function EntityPicker(props: {
       searchValue={search}
       onSearchChange={setSearch}
       filter={({ options }) => options}
-      nothingFoundMessage={debounced.length < 2 ? "Píš aspoň 2 znaky" : "Nič sa nenašlo"}
+      nothingFoundMessage={searching ? "Nič sa nenašlo" : "Píš aspoň 2 znaky"}
       onChange={(v) => {
         if (v === CREATE) return void create();
-        const hit = hits.data?.find((h) => String(h.entity_id) === v);
+        const hit = [...(hits.data ?? []), ...(recent.data ?? [])].find((h) => String(h.entity_id) === v);
+        if (v) {
+          // Remember the pick so it is offered first next time
+          api("/search/recent", { method: "POST", json: { entity_type: props.entity, entity_id: Number(v) } })
+            .then(() => queryClient.invalidateQueries({ queryKey: ["recent", props.entity] }))
+            .catch(() => {});
+        }
         props.onChange(v ? Number(v) : null, hit ? { id: hit.entity_id, [props.entity === "job" ? "title" : "name"]: hit.label } : undefined);
       }}
       comboboxProps={{ withinPortal: true }}
