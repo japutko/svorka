@@ -63,6 +63,8 @@ export const entities: Record<string, EntityConfig> = {
     json: ["location_address", "billing_address", "custom_fields", "comments"],
     required: ["title"],
     defaultOrder: "status_active DESC, created_at DESC",
+    // Job number Z26-001: numbered within the year the job was created
+    sequence: { dateField: "created_at" },
     polymorphic: true,
     afterWrite: async (id, _d, db) => reindex(db, "job", id),
   },

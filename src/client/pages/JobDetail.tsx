@@ -37,6 +37,9 @@ export function JobDetail() {
       <Group justify="space-between" align="flex-start">
         <div>
           <Group gap="xs">
+            <Text ff="monospace" fw={700} c="dimmed">
+              {job.code}
+            </Text>
             <Title order={2}>{job.title}</Title>
             <StatusBadge label={job.status} color={job.status_color} />
             {!job.is_active && <Badge color="gray">neaktívna</Badge>}

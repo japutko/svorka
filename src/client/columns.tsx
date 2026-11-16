@@ -22,6 +22,7 @@ export const personColumns: Column[] = [
 ];
 
 export const jobColumns: Column[] = [
+  { key: "code", label: "Číslo", width: 90, mobile: "meta", render: (r) => <Text size="sm" ff="monospace" fw={600}>{r.code}</Text> },
   { key: "title", label: "Nadpis", mobile: "title" },
   { key: "status", label: "Stav", type: "enum", width: 120, render: (r) => <StatusBadge label={r.status} color={r.status_color} />, mobile: "meta" },
   { key: "customer_name", label: "Zákazník", type: "text", mobile: "sub" },

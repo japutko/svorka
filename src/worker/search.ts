@@ -10,11 +10,15 @@ const custom = (col: string) =>
   `(SELECT group_concat(value, ' ') FROM json_each(CASE WHEN json_valid(${col}) THEN ${col} ELSE '{}' END) WHERE type = 'text')`;
 const notes = (type: string, idCol: string) => `(SELECT group_concat(text, ' ') FROM comment WHERE entity_type = '${type}' AND entity_id = ${idCol})`;
 
+// Job number as shown in the app (Z26-001)
+const jobCode = (j: string) => `'Z' || substr(CAST(${j}.year AS TEXT), 3) || '-' || printf('%03d', ${j}.seq)`;
+
 const sources: Record<"person" | "job", string> = {
   person: `SELECT 'person', p.id, ${join("p.name", "p.email", "p.phone", digits("p.phone"), addr("p.billing_address"), custom("p.custom_fields"), notes("person", "p.id"))}
     FROM person p`,
   job: `SELECT 'job', j.id, ${join(
-    "j.title", "p.name", "p.phone", digits("p.phone"), "p.email", addr("j.location_address"), addr("j.billing_address"), custom("j.custom_fields"), notes("job", "j.id")
+    // The number is indexed whole and as a bare sequence, so "Z26-012", "26-012" and "12" all find the job
+    jobCode("j"), `substr(${jobCode("j")}, 2)`, "CAST(j.seq AS TEXT)", "j.title", "p.name", "p.phone", digits("p.phone"), "p.email", addr("j.location_address"), addr("j.billing_address"), custom("j.custom_fields"), notes("job", "j.id")
   )}
     FROM job j LEFT JOIN person p ON p.id = j.customer_id`,
 };
@@ -35,7 +39,7 @@ export async function reindex(db: D1Database, entityType: "person" | "job", id: 
 }
 
 // Bump when the indexed fields change; the next search then rebuilds everything
-const INDEX_VERSION = "2";
+const INDEX_VERSION = "3";
 let indexChecked = false;
 
 async function ensureIndex(db: D1Database) {
@@ -63,7 +67,7 @@ export async function removeFromIndex(db: D1Database, entityType: string, id: nu
 
 // Label columns shared by search hits and recent picks
 const hitColumns = `CASE WHEN j.id IS NOT NULL THEN j.title ELSE p.name END AS label,
-       CASE WHEN j.id IS NOT NULL THEN COALESCE(jp.name, '') ELSE COALESCE(p.phone, p.email, '') END AS sub,
+       CASE WHEN j.id IS NOT NULL THEN ${jobCode("j")} || COALESCE(' · ' || jp.name, '') ELSE COALESCE(p.phone, p.email, '') END AS sub,
        CASE WHEN j.id IS NOT NULL THEN COALESCE(st.is_active_state, 0) ELSE 1 END AS active`;
 const hitJoins = (type: string, id: string) => `
      LEFT JOIN job j ON ${type} = 'job' AND j.id = ${id}
