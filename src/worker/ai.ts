@@ -181,3 +181,34 @@ Ak niečo na doklade nie je, daj null. Vráť iba JSON.`;
     job_reason: job ? ex.job_reason ?? null : null,
   });
 });
+
+// Short job title from the first note, e.g. "Prípojka a rozvody v garáži – Hlavná"
+aiRoutes.post("/job-title", async (c) => {
+  const d = await c.req.json<{ note?: string; street?: string | null }>();
+  const note = (d.note ?? "").trim().slice(0, 2000);
+  if (note.length < 10) return c.json({ title: null });
+  const street = (d.street ?? "").trim().slice(0, 80);
+  const prompt = `Si asistent slovenského elektrikára. Z poznámky k novej zákazke vytvor krátky nadpis zákazky.
+
+Pravidlá:
+- 2 až 6 slov po slovensky, bez úvodzoviek a bez bodky na konci.
+- Pomenuj prácu a miesto alebo objekt (napr. garáž, byt, rozvádzač), nie zákazníka ani to, od koho má kontakt, ani termíny stretnutí.
+- ${street ? `Na koniec pridaj ulicu v tvare " – ${street}".` : "Ulicu ani mesto nepridávaj, ak nie sú v poznámke."}
+- Nič si nevymýšľaj. Vráť iba samotný nadpis.
+
+Príklad: poznámka "Zákazník mal číslo od Miša, potrebuje spraviť prípojku na garáži. Okrem toho chce rozvody, pár zásuviek a svetiel. Máme sa stretnúť o týždeň." a ulica "Hlavná" → Prípojka a rozvody v garáži – Hlavná
+
+Poznámka: ${JSON.stringify(note)}`;
+  try {
+    const res = (await c.env.AI.run(MODEL, { messages: [{ role: "user", content: prompt }], max_tokens: 40, temperature: 0.2 } as never)) as { response?: unknown };
+    const title = String(res.response ?? "")
+      .split("\n")[0]
+      .replace(/^(nadpis|názov)\s*:\s*/i, "")
+      .replace(/^["„“'\s]+|["“”'.\s]+$/g, "")
+      .slice(0, 70);
+    return c.json({ title: title.length >= 3 ? title : null });
+  } catch (e) {
+    console.error("job title failed", e);
+    return c.json({ title: null });
+  }
+});

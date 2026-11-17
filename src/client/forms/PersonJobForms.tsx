@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Anchor, Button, Checkbox, Divider, Group, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+import { ActionIcon, Anchor, Button, Checkbox, Divider, Group, Stack, Switch, Text, TextInput, Tooltip } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
+import { IconSparkles } from "@tabler/icons-react";
 import { Link } from "react-router";
-import { notifyError, useCodelist, useList, useRecord, type Row } from "../api";
+import { api, notifyError, useCodelist, useList, useRecord, type Address, type Row } from "../api";
 import { AddressInput, CodelistSelect, CustomFields, EmailInput, EntityPicker, PhoneInput, Row2, emailError, phoneError } from "../components/inputs";
 import { StatusBadge } from "../components/DataTable";
 import { FileSection } from "../components/Files";
@@ -77,11 +79,18 @@ export function PersonForm({ id, defaults, onDone }: FormProps) {
   );
 }
 
-// Without an AI key the title is suggested from the first sentence of the note
+// Until the AI answers (or when it can't), the title is the first sentence of the note
 const titleFromNote = (s: string) => {
   const first = s.trim().split(/[.\n!?]/)[0].trim();
   return first.length > 70 ? first.slice(0, 67).trimEnd() + "…" : first;
 };
+
+const streetOf = (a?: Address | null) => a?.street ?? a?.label?.split(",")[0].replace(/\s+\d+\S*(\/\d+\S*)?$/, "").trim() ?? null;
+
+const suggestTitle = (note: string, street: string | null) =>
+  api<{ title: string | null }>("/ai/job-title", { method: "POST", json: { note, street } })
+    .then((r) => r.title)
+    .catch(() => null);
 
 export function JobForm({ id, defaults, onDone }: FormProps) {
   const status = useCodelist("job_status");
@@ -98,6 +107,32 @@ export function JobForm({ id, defaults, onDone }: FormProps) {
   const customer = useRecord("person", f.v?.customer_id ?? undefined);
   // Both addresses default to the customer's billing address
   useLateDefaults(f, !id, { location_address: customer.data?.billing_address ?? null, billing_address: customer.data?.billing_address ?? null });
+
+  // New job: once typing pauses, AI turns the note into a short title, unless the user wrote their own
+  const note: string = f.v?.initial_comment ?? "";
+  const street = streetOf(f.v?.location_address);
+  const [debouncedNote] = useDebouncedValue(note, 1200);
+  const [aiTitle, setAiTitle] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const latest = useRef({ touched: titleTouched, set: f.set, request: 0 });
+  latest.current.touched = titleTouched;
+  latest.current.set = f.set;
+  const askAi = async (text: string, force = false) => {
+    const request = ++latest.current.request;
+    setAiBusy(true);
+    const title = await suggestTitle(text, street);
+    if (request !== latest.current.request) return;
+    setAiBusy(false);
+    if (!title || (latest.current.touched && !force)) return;
+    setAiTitle(title);
+    if (force) setTitleTouched(false);
+    latest.current.set({ title });
+  };
+  useEffect(() => {
+    if (!id && !latest.current.touched && debouncedNote.trim().length >= 20) void askAi(debouncedNote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedNote, street, id]);
+
   if (!f.v) return <FormShell loading entity="job" onSave={() => {}} onCancel={() => onDone(null)}>{null}</FormShell>;
   const v = f.v;
 
@@ -142,13 +177,22 @@ export function JobForm({ id, defaults, onDone }: FormProps) {
         <JournalField
           entity="job"
           value={v.initial_comment}
-          onChange={(initial_comment) => f.set({ initial_comment, ...(titleTouched ? {} : { title: titleFromNote(initial_comment) }) })}
+          onChange={(initial_comment) => f.set({ initial_comment, ...(titleTouched || aiTitle ? {} : { title: titleFromNote(initial_comment) }) })}
         />
       )}
       <TextInput
         label="Nadpis"
         required
-        description={!id && !titleTouched ? "Doplní sa z poznámky" : undefined}
+        description={!id && !titleTouched ? (aiBusy ? "AI navrhuje nadpis z poznámky…" : "Doplní sa z poznámky") : undefined}
+        rightSection={
+          !id && note.trim().length >= 10 ? (
+            <Tooltip label="Navrhnúť nadpis z poznámky (AI)">
+              <ActionIcon variant="subtle" loading={aiBusy} onClick={() => askAi(note, true)} aria-label="Navrhnúť nadpis">
+                <IconSparkles size={16} />
+              </ActionIcon>
+            </Tooltip>
+          ) : undefined
+        }
         value={v.title ?? ""}
         onChange={(e) => {
           setTitleTouched(true);
